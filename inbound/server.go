@@ -188,7 +188,7 @@ func (handler *Handler) ServeDNS(resp dns.ResponseWriter, request *dns.Msg) {
 		handler.LogQuery(ctx.Fields(), "match CN CIDR", "clean")
 	} else if blocked, ok := handler.GFWMatcher.Match(question.Name); !ok || !blocked {
 		// 出现非cn ip但域名不匹配gfwlist，DirtyFirst 关闭，流程结束
-		if !DirtyFirst {
+		if !handler.DirtyFirst {
             handler.LogQuery(ctx.Fields(), "not match gfwlist", "clean")
         } else {
 			// 出现非cn ip且域名不匹配gfwlist，DirtyFirst 开启，用dirty组dns再次解析
