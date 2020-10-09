@@ -88,6 +88,7 @@ type Handler struct {
 	Listen       string
 	Network      string
 	DisableIPv6  bool
+	DirtyFirst   bool
 	Cache        *cache.DNSCache
 	GFWMatcher   *matcher.ABPlus
 	CNIP         *cache.RamSet
@@ -184,10 +185,17 @@ func (handler *Handler) ServeDNS(resp dns.ResponseWriter, request *dns.Msg) {
 	r = group.CallDNS(ctx, request)
 	if allInRange(r, handler.CNIP) {
 		// 未出现非cn ip，流程结束
-		handler.LogQuery(ctx.Fields(), "cn/empty ipv4", "clean")
+		handler.LogQuery(ctx.Fields(), "match CN CIDR", "clean")
 	} else if blocked, ok := handler.GFWMatcher.Match(question.Name); !ok || !blocked {
-		// 出现非cn ip但域名不匹配gfwlist，流程结束
-		handler.LogQuery(ctx.Fields(), "not match gfwlist", "clean")
+		// 出现非cn ip但域名不匹配gfwlist，DirtyFirst 关闭，流程结束
+		if !DirtyFirst {
+            handler.LogQuery(ctx.Fields(), "not match gfwlist", "clean")
+        } else {
+			// 出现非cn ip且域名不匹配gfwlist，DirtyFirst 开启，用dirty组dns再次解析
+			handler.LogQuery(ctx.Fields(), "not match gfwlist", "dirty")
+			group = handler.Groups["dirty"] // 设置group变量以在defer里添加ipset
+			r = group.CallDNS(ctx, request)
+		}
 	} else {
 		// 出现非cn ip且域名匹配gfwlist，用dirty组dns再次解析
 		handler.LogQuery(ctx.Fields(), "match gfwlist", "dirty")
