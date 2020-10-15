@@ -6,6 +6,7 @@ gfwlist = "gfwlist.txt"  # gfwlist文件路径，release包中已预下载。官
 gfwlist_b64 = true  # 是否使用base64解码gfwlist文件，默认为true
 cnip = "cnip.txt"  # 中国ip网段列表，用于辅助域名分组
 disable_qtypes = ["AAAA", "HTTPS"]  # 屏蔽IPv6/HTTPS查询
+dirty_first = true  # 当 clean 组解析出来的域名 IP 不属于中国大陆, 同时此域名也不包含在 gfwlist 时, 优先使用 dirty 组重新查询;否则直接使用 clean 组的结果
 
 hosts_files = ["/etc/hosts"]  # hosts文件路径，支持多hosts
 [hosts] # 自定义域名映射
