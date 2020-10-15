@@ -165,6 +165,7 @@ type Conf struct {
 	Groups        map[string]*Group
 	DisableIPv6   bool     `toml:"disable_ipv6"`
 	DisableQTypes []string `toml:"disable_qtypes"`
+	DirtyFirst   bool     `toml:"dirty_first"`
 }
 
 // SetDefault 为部分字段默认配置
@@ -276,6 +277,10 @@ func NewHandler(filename string) (handler *inbound.Handler, err error) {
 		if qType = strings.TrimSpace(qType); qType != "" {
 			handler.DisableQTypes[strings.ToUpper(qType)] = true
 		}
+	}
+	handler.DirtyFirst = config.DirtyFirst
+	if handler.DirtyFirst {
+		log.Warn("enable dirty_first logic")
 	}
 	// 读取gfwlist
 	if handler.GFWMatcher, err = matcher.NewABPByFile(config.GFWList, config.GFWb64); err != nil {

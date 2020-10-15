@@ -95,6 +95,7 @@ type Handler struct {
 	Groups        map[string]*Group
 	QueryLogger   *log.Logger
 	DisableQTypes map[string]bool
+	DirtyFirst    bool
 }
 
 // HitHosts 如dns请求匹配hosts，则生成对应dns记录并返回。否则返回nil
@@ -189,10 +190,16 @@ func (handler *Handler) ServeDNS(resp dns.ResponseWriter, request *dns.Msg) {
 	r = group.CallDNS(ctx, request)
 	if allInRange(r, handler.CNIP) {
 		// 未出现非cn ip，流程结束
-		handler.LogQuery(ctx.Fields(), "cn/empty ipv4", "clean")
+		handler.LogQuery(ctx.Fields(), "match CN CIDR", "clean")
 	} else if blocked, ok := handler.GFWMatcher.Match(question.Name); !ok || !blocked {
-		// 出现非cn ip但域名不匹配gfwlist，流程结束
-		handler.LogQuery(ctx.Fields(), "not match gfwlist", "clean")
+		if !handler.DirtyFirst {
+			// 出现非cn ip但域名不匹配gfwlist，流程结束
+			handler.LogQuery(ctx.Fields(), "not match gfwlist&CN CIDR", "clean resolve")
+		} else {
+			handler.LogQuery(ctx.Fields(), "not match gfwlist&CN CIDR", "dirty resolve")
+			group = handler.Groups["dirty"] // 设置group变量以在defer里添加ipset
+			r = group.CallDNS(ctx, request)
+		}
 	} else {
 		// 出现非cn ip且域名匹配gfwlist，用dirty组dns再次解析
 		handler.LogQuery(ctx.Fields(), "match gfwlist", "dirty")
@@ -262,6 +269,7 @@ func (handler *Handler) Refresh(target *Handler) {
 		handler.QueryLogger = target.QueryLogger
 	}
 	handler.DisableIPv6 = target.DisableIPv6
+	handler.DirtyFirst = target.DirtyFirst
 }
 
 // IsValid 判断Handler是否符合运行条件
