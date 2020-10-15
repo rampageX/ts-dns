@@ -84,17 +84,17 @@ func (group *Group) AddIPSet(ctx *context.Context, r *dns.Msg) {
 
 // Handler 存储主要配置的dns请求处理器，程序核心
 type Handler struct {
-	Mux          *sync.RWMutex
-	Listen       string
-	Network      string
-	DisableIPv6  bool
-	DirtyFirst   bool
-	Cache        *cache.DNSCache
-	GFWMatcher   *matcher.ABPlus
-	CNIP         *cache.RamSet
-	HostsReaders []hosts.Reader
-	Groups       map[string]*Group
-	QueryLogger  *log.Logger
+	Mux           *sync.RWMutex
+	Listen        string
+	Network       string
+	DisableIPv6   bool
+	Cache         *cache.DNSCache
+	GFWMatcher    *matcher.ABPlus
+	CNIP          *cache.RamSet
+	HostsReaders  []hosts.Reader
+	Groups        map[string]*Group
+	QueryLogger   *log.Logger
+	DisableQTypes map[string]bool
 }
 
 // HitHosts 如dns请求匹配hosts，则生成对应dns记录并返回。否则返回nil
@@ -158,6 +158,10 @@ func (handler *Handler) ServeDNS(resp dns.ResponseWriter, request *dns.Msg) {
 		r = &dns.Msg{}
 		return // 禁用IPv6时直接返回
 	}
+	if qType := dns.TypeToString[question.Qtype]; handler.DisableQTypes[qType] {
+		r = &dns.Msg{}
+		return // 禁用指定查询类型
+	}
 	// 检测是否命中hosts
 	if r = handler.HitHosts(ctx, request); r != nil {
 		handler.LogQuery(ctx.Fields(), "hit hosts", "")
@@ -185,17 +189,10 @@ func (handler *Handler) ServeDNS(resp dns.ResponseWriter, request *dns.Msg) {
 	r = group.CallDNS(ctx, request)
 	if allInRange(r, handler.CNIP) {
 		// 未出现非cn ip，流程结束
-		handler.LogQuery(ctx.Fields(), "match CN CIDR", "clean")
+		handler.LogQuery(ctx.Fields(), "cn/empty ipv4", "clean")
 	} else if blocked, ok := handler.GFWMatcher.Match(question.Name); !ok || !blocked {
-		// 出现非cn ip但域名不匹配gfwlist，DirtyFirst 关闭，流程结束
-		if !handler.DirtyFirst {
-            handler.LogQuery(ctx.Fields(), "not match gfwlist", "clean")
-        } else {
-			// 出现非cn ip且域名不匹配gfwlist，DirtyFirst 开启，用dirty组dns再次解析
-			handler.LogQuery(ctx.Fields(), "not match gfwlist", "dirty")
-			group = handler.Groups["dirty"] // 设置group变量以在defer里添加ipset
-			r = group.CallDNS(ctx, request)
-		}
+		// 出现非cn ip但域名不匹配gfwlist，流程结束
+		handler.LogQuery(ctx.Fields(), "not match gfwlist", "clean")
 	} else {
 		// 出现非cn ip且域名匹配gfwlist，用dirty组dns再次解析
 		handler.LogQuery(ctx.Fields(), "match gfwlist", "dirty")
